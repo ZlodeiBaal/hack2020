@@ -119,3 +119,104 @@ def hausdorff_distance(y, x, voxel_shape=None):
 
     return max(sd1.max(), sd2.max())
 
+
+# --- connected components stuff
+def get_metric_matrix(gt, pred, metric=iou):
+    """
+    Возвращает матрицу количество инстансов GT x PRED с пересечениями
+    :param gt:
+    :param pred:
+    :param metric:
+    :return:
+    """
+    gt, pred = np.array(gt).astype(bool), np.array(pred).astype(bool)
+    return np.array([[metric(gt_cc, pred_cc) for pred_cc in pred] for gt_cc in gt])
+
+
+def get_matched_components(metric_matrix, metric_th):
+    """
+    Возвращает matching_lists, unmatched_gt, unmatched_pred.
+
+    matching_lists - лист из номеров замэтчившихся связных компонент размера кол-во интсансов в GT:
+                    то есть если 0ой инстанс GT мэтчится с 1,2,3 PRED, а 1ый инстанс GT не мэтчится ни с чем,
+                    то matching list выглядит как: [ [1,2,3], [], ...]
+
+    unmatched_gt, unmatched_pred - list of indexes
+
+    :param metric_matrix: то, что возвращает get_metric_matrix
+    :param metric_th:
+    :return:
+    """
+
+    matched_gt = set()
+    matched_pred = set()
+    matching_lists = []
+
+    gt_indexes = np.array(range(metric_matrix.shape[0]))
+    pred_indexes = np.array(range(metric_matrix.shape[1]))
+
+    for i, gt_cc_metrics in zip(gt_indexes, metric_matrix):
+        res = pred_indexes[gt_cc_metrics > metric_th]
+        if len(res):
+            matched_gt.add(i)
+            for j in res:
+                matched_pred.add(j)
+
+        matching_lists.append(res)
+
+    return matching_lists, list(sorted(set(gt_indexes) - matched_gt)), list(sorted(set(pred_indexes) - matched_pred))
+
+
+def collect_instance_from_matched_indexes(gt, pred, matching_lists, unmatched_gt, unmatched_pred):
+
+    gt, pred = np.array(gt).astype(bool), np.array(pred).astype(bool)
+    matched = []
+
+    for i, matching_list in enumerate(matching_lists):
+        if matching_list:
+            matched.append([gt[i], [pred[j] for j in matching_list]])
+
+    return matched, [gt[i] for i in unmatched_gt], [pred[i] for i in unmatched_pred]
+
+
+def collect_instance_from_matched_indexes_gt_and_pred(gt, pred, matching_lists, pred_matching_lists, unmatched_gt, unmatched_pred):
+    gt, pred = np.array(gt).astype(bool), np.array(pred).astype(bool)
+    matched = []
+    pred_matched = []
+
+    for i, matching_list in enumerate(matching_lists):
+        if len(matching_list) > 0:
+            matched.append([gt[i], [pred[j] for j in matching_list]])
+
+    for i, matching_list in enumerate(pred_matching_lists):
+        if len(matching_list) > 0:
+            pred_matched.append([pred[i], [gt[j] for j in matching_list]])
+
+    return matched, pred_matched, [gt[i] for i in unmatched_gt], [pred[i] for i in unmatched_pred]
+
+
+def get_matching(gt, pred, metric, metric_ths):
+    """
+    Возвращает list (длины len(metric_ths)) из мэтчингов [GT, [PRED]], [PRED, [GT]], unmatched GT, unmatched PRED
+
+    :param gt:
+    :param pred:
+    :param metric:
+    :param metric_ths:
+    :return:
+    """
+    gt, pred = np.array(gt).astype(bool), np.array(pred).astype(bool)
+    metric_matrix = get_metric_matrix(gt, pred, metric)
+
+    res = []
+    for metric_th in metric_ths:
+        matching_lists, unmatched_gt, unmatched_pred = get_matched_components(metric_matrix, metric_th)
+        pred_matching_lists, pred_unmatched_pred, pred_unmatched_gt = get_matched_components(metric_matrix.T, metric_th)
+
+        # TODO: remove it if generalize
+        assert len(set(unmatched_gt) ^ set(pred_unmatched_gt)) == 0
+        assert len(set(unmatched_pred) ^ set(pred_unmatched_pred)) == 0
+
+        res.append(collect_instance_from_matched_indexes_gt_and_pred(gt, pred, matching_lists, pred_matching_lists, unmatched_gt, unmatched_pred))
+
+    return res
