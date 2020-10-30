@@ -68,15 +68,16 @@ def fraction(numerator, denominator, empty_val: float = 1):
 
 
 # --- metrics
+# TODO: STANDART METRIC(GT, PRED)
 @add_check_bool
 @add_check_shapes
-def dice_score(x: np.ndarray, y: np.ndarray) -> float:
+def dice_score(y: np.ndarray, x: np.ndarray) -> float:
     return fraction(2 * np.sum(x & y), np.sum(x) + np.sum(y), empty_val=1)
 
 
 @add_check_bool
 @add_check_shapes
-def iou(x: np.ndarray, y: np.ndarray) -> float:
+def iou(y: np.ndarray, x: np.ndarray) -> float:
     return fraction(np.sum(x & y), np.sum(x | y), empty_val=1)
 
 
@@ -95,7 +96,7 @@ def surface_distances(y_true, y_pred, voxel_shape=None):
 
 @add_check_bool
 @add_check_shapes
-def assd(x, y, voxel_shape=None):
+def assd(y, x, voxel_shape=None):
     sd1 = surface_distances(y, x, voxel_shape=voxel_shape)
     sd2 = surface_distances(x, y, voxel_shape=voxel_shape)
     if sd1.size == 0 and sd2.size == 0:
@@ -108,7 +109,7 @@ def assd(x, y, voxel_shape=None):
 
 @add_check_bool
 @add_check_shapes
-def hausdorff_distance(x, y, voxel_shape=None):
+def hausdorff_distance(y, x, voxel_shape=None):
     sd1 = surface_distances(y, x, voxel_shape=voxel_shape)
     sd2 = surface_distances(x, y, voxel_shape=voxel_shape)
     if sd1.size == 0 and sd2.size == 0:
@@ -117,3 +118,4 @@ def hausdorff_distance(x, y, voxel_shape=None):
         return np.nan
 
     return max(sd1.max(), sd2.max())
+
