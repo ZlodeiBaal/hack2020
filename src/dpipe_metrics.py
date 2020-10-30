@@ -80,6 +80,8 @@ def iou(x: np.ndarray, y: np.ndarray) -> float:
     return fraction(np.sum(x & y), np.sum(x | y), empty_val=1)
 
 
+@add_check_bool
+@add_check_shapes
 def surface_distances(y_true, y_pred, voxel_shape=None):
     check_bool(y_pred, y_true)
     check_shapes(y_pred, y_true)
@@ -91,6 +93,8 @@ def surface_distances(y_true, y_pred, voxel_shape=None):
     return dt[pred_border]
 
 
+@add_check_bool
+@add_check_shapes
 def assd(x, y, voxel_shape=None):
     sd1 = surface_distances(y, x, voxel_shape=voxel_shape)
     sd2 = surface_distances(x, y, voxel_shape=voxel_shape)
@@ -102,6 +106,8 @@ def assd(x, y, voxel_shape=None):
     return np.mean([sd1.mean(), sd2.mean()])
 
 
+@add_check_bool
+@add_check_shapes
 def hausdorff_distance(x, y, voxel_shape=None):
     sd1 = surface_distances(y, x, voxel_shape=voxel_shape)
     sd2 = surface_distances(x, y, voxel_shape=voxel_shape)
@@ -111,4 +117,3 @@ def hausdorff_distance(x, y, voxel_shape=None):
         return np.nan
 
     return max(sd1.max(), sd2.max())
-
