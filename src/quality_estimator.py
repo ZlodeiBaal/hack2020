@@ -131,7 +131,7 @@ class BaseQualityEstimator(BaseEstimator, ClassifierMixin):
             return unary_metrics_computed
 
         def _matching_metrics(x_decomp, xy_decomp):
-            metric_ths = [0.02, 0.25, 0.7]
+            metric_ths = [0.02, 0.25, 0.5, 0.7]
             matching = get_matching(x_decomp, xy_decomp, metric=iou, metric_ths=metric_ths)
 
             matching_metrics_computed = dict()
