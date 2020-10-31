@@ -40,6 +40,8 @@ def match2fnr(matches):
 def _match_aggregator(matches, i, metric, pred_instance_aggregator, gt_instance_aggregator):
     assert (i == 0) or (i == 1)
     match = matches[i]
+    if len(match) == 0:
+        return np.NaN
 
     res = []
     for gt_inst_row in match:
