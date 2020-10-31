@@ -1,9 +1,9 @@
 import numpy as np
-from functools import wraps
+from functools import wraps, partial
 from typing import Callable, Sequence, Iterable
 
 import numpy as np
-
+from scipy.ndimage import center_of_mass
 
 # --- checks
 from scipy.ndimage import distance_transform_edt, binary_erosion
@@ -118,6 +118,16 @@ def hausdorff_distance(y, x, voxel_shape=None):
         return np.nan
 
     return max(sd1.max(), sd2.max())
+
+
+def centres_distance(y, x, norm):
+    c1, c2 = center_of_mass(y), center_of_mass(x)
+    c1, c2 = np.array(c1), np.array(c2)
+
+    return norm(c1, c2)
+
+l1_centres_distance = partial(centres_distance, norm=lambda cc1, cc2: np.abs(cc1-cc2).sum())
+l2_centres_distance = partial(centres_distance, norm=lambda cc1, cc2: np.linalg.norm(cc1-cc2))
 
 
 # --- connected components stuff
