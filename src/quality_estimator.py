@@ -129,31 +129,36 @@ class BaseQualityEstimator(BaseEstimator, ClassifierMixin):
                 unary_metrics_computed[metric_] = unary_metrics_dict[metric_][self.data_type](x)
             
             return unary_metrics_computed
-        
+
         def _matching_metrics(x_decomp, xy_decomp):
-            matching = get_matching(x_decomp, xy_decomp, metric=iou, metric_ths=[0.1])
-               
+            metric_ths = [0.02, 0.25, 0.7]
+            matching = get_matching(x_decomp, xy_decomp, metric=iou, metric_ths=metric_ths)
+
             matching_metrics_computed = dict()
-            
-            for metric_ in self.matching_metrics:
-                if len(matching_metrics_dict[metric_]['params']) == 0:
-                    matching_metrics_computed[metric_] = matching_metrics_dict[metric_]['function'](matching[0])
-                else:
-                    params = matching_metrics_dict[metric_]['params']
-#                     print(params)
-#                     params = {"l": [1, 2, 3], "g": [4, 5, 6]}
-                    params_sets = [dict(zip(params.keys(), v_)) for v_ in list(product(*params.values()))]
-#                     params_sets = [dict(zip(params, t)) for t in zip(*params.values())]
-#                     print(params_sets)
-                    for param_set_ in params_sets:
-                        temp_metric_name_ = metric_ + "_"
-                        for key_ in param_set_:
-                            temp_metric_name_ += str(param_set_[key_]) + "_" if isinstance(param_set_[key_], float) or isinstance(param_set_[key_], int) else param_set_[key_].__name__
-#                         print(temp_metric_name_)
-                        matching_metrics_computed[temp_metric_name_] = matching_metrics_dict[metric_]['function'](matching[0], **param_set_)
-#             print(len(matching_metrics_computed))
+            for th, matching_ in zip(metric_ths, matching):
+                for metric_ in self.matching_metrics:
+                    if len(matching_metrics_dict[metric_]['params']) == 0:
+                        matching_metrics_computed[metric_ + f'_iou_{th}'] = matching_metrics_dict[metric_][
+                            'function'](matching_)
+                    else:
+                        params = matching_metrics_dict[metric_]['params']
+                        #                     print(params)
+                        #                     params = {"l": [1, 2, 3], "g": [4, 5, 6]}
+                        params_sets = [dict(zip(params.keys(), v_)) for v_ in list(product(*params.values()))]
+                        #                     params_sets = [dict(zip(params, t)) for t in zip(*params.values())]
+                        #                     print(params_sets)
+                        for param_set_ in params_sets:
+                            temp_metric_name_ = metric_ + "_"
+                            for key_ in param_set_:
+                                temp_metric_name_ += str(param_set_[key_]) + "_" if isinstance(param_set_[key_],
+                                                                                               float) or isinstance(
+                                    param_set_[key_], int) else param_set_[key_].__name__
+                            #                         print(temp_metric_name_)
+                            matching_metrics_computed[temp_metric_name_ + f'_iou_{th}'] = \
+                            matching_metrics_dict[metric_]['function'](matching_, **param_set_)
+            #             print(len(matching_metrics_computed))
             return matching_metrics_computed
-        
+
         metrics_computed = []
         
         for x_, xy_ in zip(X, Xy):
