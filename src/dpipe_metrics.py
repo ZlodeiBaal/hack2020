@@ -205,10 +205,17 @@ def get_matching(gt, pred, metric, metric_ths):
     :param metric_ths:
     :return:
     """
+    res = []
     gt, pred = np.array(gt).astype(bool), np.array(pred).astype(bool)
+
+    if (len(gt) == 0) or (len(pred) == 0):
+        for metric_th in metric_ths:
+            res.append([[], [], gt, pred])
+
+        return res
+
     metric_matrix = get_metric_matrix(gt, pred, metric)
 
-    res = []
     for metric_th in metric_ths:
         matching_lists, unmatched_gt, unmatched_pred = get_matched_components(metric_matrix, metric_th)
         pred_matching_lists, pred_unmatched_pred, pred_unmatched_gt = get_matched_components(metric_matrix.T, metric_th)
