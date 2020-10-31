@@ -18,6 +18,8 @@ sys.path.append(os.path.abspath('../src/'))
 from dpipe_metrics import get_matching
 from dpipe_metrics import hausdorff_distance, surface_distances, dice_score, assd, iou
 
+from matching_metrics import *
+
 metrics_dict = {
     "dice_coefficient": {"2d": dice_score, "3d": dice_score},
 #     "mae": {"2d": lambda x, y: np.abs(x - y).mean(), "3d": lambda x, y: np.abs(x - y).mean()},
@@ -31,11 +33,19 @@ unary_metrics_dict = {
     "area": {"2d": lambda x: (x > 0).sum(), "3d": lambda x: (x > 0).sum()}
 }
 
+matching_metrics_dict = {
+    "match2tpr": {"2d": match2tpr, "3d": match2tpr},
+    "match2tp": {"2d": match2tp, "3d": match2tp},
+    "match2fnr": {"2d": match2fnr, "3d": match2fnr},
+    "match2gtCoverageRate": {"2d": match2gtCoverageRate, "3d": match2gtCoverageRate},
+    "match2predCoverageRate": {"2d": match2predCoverageRate, "3d": match2predCoverageRate}
+}
+
 
 class BaseQualityEstimator(BaseEstimator, ClassifierMixin):
     """Base Estimator for segmentation quality assessment"""
 
-    def __init__(self, metrics=["dice_coefficient"], unary_metrics=["area"], meta_clf=LGBMClassifier()):
+    def __init__(self, metrics=["dice_coefficient"], unary_metrics=["area"], matching_metrics=[], meta_clf=LGBMClassifier()):
         """
         Args:
             metrics: list of strings: metrics to be computed on pairs of preds and gt
@@ -46,6 +56,7 @@ class BaseQualityEstimator(BaseEstimator, ClassifierMixin):
         self.meta_clf = meta_clf
         self.metrics = list(filter(lambda _: _ in metrics_dict, metrics))
         self.unary_metrics = list(filter(lambda _: _ in unary_metrics_dict, unary_metrics))
+        self.matching_metrics = list(filter(lambda _: _ in matching_metrics_dict, matching_metrics))
         
         self.data_type = "3d"
         self.X_metrics = None
@@ -98,92 +109,13 @@ class BaseQualityEstimator(BaseEstimator, ClassifierMixin):
         
         def _matching_metrics(x_decomp, xy_decomp):
             matching = get_matching(x_decomp, xy_decomp, metric=iou, metric_ths=[0.1])
-
-            def _match2tpr(matches):
-
-                gt_matches = matches[0]
-                gt_unmatched = matches[2]
-
-                n_gt_matched = len(gt_matches)
-                n_gt_unmatched = len(gt_unmatched)
-
-                return (n_gt_matched + 1) / (n_gt_matched + n_gt_unmatched + 1)
+               
+            matching_metrics_computed = dict()
             
+            for metric_ in self.matching_metrics:
+                matching_metrics_computed[metric_] = matching_metrics_dict[metric_][self.data_type](matching[0])
             
-            def _match2tp(matches):
-
-                gt_matches = matches[0]
-                gt_unmatched = matches[2]
-
-                n_gt_matched = len(gt_matches)
-                n_gt_unmatched = len(gt_unmatched)
-
-                return n_gt_matched
-        
-
-            def _match2fnr(matches):
-
-                pred_matches = matches[1]
-                pred_unmatched = matches[3]
-
-                n_pred_matched = len(pred_matches)
-                n_pred_unmatched = len(pred_unmatched)
-
-                return n_pred_unmatched / (n_pred_matched + n_pred_unmatched + 1)
-            
-            
-            def _match2gtCoverageRate(matches):
-                
-                coverage_binarization_threshold = 0.7
-                
-                gt_matches = matches[0]
-                gt_unmatched = matches[2]
-                
-                binary_coverage_instance_list = []
-                for gt_instance_matching in gt_matches:
-                    instance = gt_instance_matching[0]
-                    predictions = gt_instance_matching[1]
-                    
-                    instance_coverage = np.sum(instance&np.sum(predictions, axis=0, dtype=bool))/np.sum(instance)
-                    binary_coverage_instance_list.append(instance_coverage>coverage_binarization_threshold)
-                
-                n_gt_matched = len(gt_matches)
-                n_gt_unmatched = len(gt_unmatched)
-                
-                
-                return np.sum(binary_coverage_instance_list) / (n_gt_matched + n_gt_unmatched + 1)
-            
-            def _match2predCoverageRate(matches):
-                
-                coverage_binarization_threshold = 0.3
-                
-                pred_matches   = matches[1]
-                pred_unmatched = matches[3]
-                
-                binary_coverage_instance_list = []
-                for pred_instance_matching in pred_matches:
-                    instance    = pred_instance_matching[0]
-                    gts = pred_instance_matching[1]
-                    
-                    instance_coverage = np.sum(instance&np.sum(gts, axis=0, dtype=bool))/np.sum(instance)
-                    binary_coverage_instance_list.append(instance_coverage>coverage_binarization_threshold)
-                
-                n_pred_matched = len(pred_matches)
-                n_pred_unmatched = len(pred_unmatched)
-                
-                
-                return np.sum(binary_coverage_instance_list) / (n_pred_matched + n_pred_unmatched + 1)
-            
-            tpr = _match2tpr(matching[0])
-            fnr = _match2fnr(matching[0])
-            tp = _match2tp(matching[0])
-            gtCovThrRate   = _match2gtCoverageRate(matching[0])
-            predCovThrRate = _match2predCoverageRate(matching[0])
-            return {#"tpr": tpr, 
-                    #"fnr": fnr, 
-                    "tp": tp,
-                    "gtCovThrRate": gtCovThrRate, 
-                    "predCovThrRate": predCovThrRate}
+            return matching_metrics_computed
         
         metrics_computed = []
         
