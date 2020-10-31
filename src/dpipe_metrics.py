@@ -130,6 +130,11 @@ l1_centres_distance = partial(centres_distance, norm=lambda cc1, cc2: np.abs(cc1
 l2_centres_distance = partial(centres_distance, norm=lambda cc1, cc2: np.linalg.norm(cc1-cc2))
 
 
+# --- normas
+def volume(x):
+    return x.sum()
+
+
 # --- connected components stuff
 def get_metric_matrix(gt, pred, metric=iou):
     """
