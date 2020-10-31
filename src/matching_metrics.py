@@ -1,3 +1,5 @@
+from functools import partial
+
 import numpy as np
 import dpipe_metrics as dm
 
@@ -32,6 +34,23 @@ def match2fnr(matches):
     n_pred_unmatched = len(pred_unmatched)
 
     return n_pred_unmatched / (n_pred_matched + n_pred_unmatched + 1)
+
+# ---
+
+def _match_aggregator(matches, i, metric, pred_instance_aggregator, gt_instance_aggregator):
+    assert (i == 0) or (i == 1)
+    match = matches[i]
+
+    res = []
+    for gt_inst_row in match:
+        gt_inst_row_metrics = [metric(gt_inst_row[0], pred_inst) for pred_inst in gt_inst_row[1]]
+        res.append(pred_instance_aggregator(gt_inst_row_metrics))
+
+    return gt_instance_aggregator(res)
+
+gt_match_aggregator = partial(_match_aggregator, i=0)
+pred_match_aggregator = partial(_match_aggregator, i=1)
+
 
 def coverageCalculation(x,y):
     return np.sum(x&y)/np.sum(x)
