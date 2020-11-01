@@ -2,7 +2,8 @@ import os
 import glob
 import numpy as np
 import pandas as pd
-
+import math 
+from PIL import Image, ImageDraw 
 
 def prepare_submission(y_pred, root_dir):
     y_df = pd.read_csv(os.path.join(root_dir, "OpenPart.csv"))
@@ -64,6 +65,7 @@ def data_generator_train(root_dir):
     return X, Xy, y
 
 
+
 def data_generator_test(root_dir):
     
     y_df = pd.read_csv(os.path.join(root_dir, "OpenPart.csv"))
@@ -99,3 +101,53 @@ def data_generator_test(root_dir):
 #     y = np.array(full_y)
     
     return X, Xy
+
+
+def datasetDecomposition(input_path="../data/DX_TEST_RESULT_FULL.csv",
+                         output_path="../data/ellipse",
+                         shape=(1024,1024)):
+    textData = pd.read_csv(input_path)
+    users = sorted(textData[' user_name'].unique())
+    
+    data = {}
+    for k in users:
+        data[k]=[]
+
+    cases_order = []    
+
+    for case in textData.file_name.unique():
+        for user in users:
+            subsample = textData[(textData.file_name == case) & (textData[' user_name'] == user)]
+
+            samples_list = []
+            for i, row in subsample.iterrows():
+                img = Image.new("RGB", shape)
+
+                img1 = ImageDraw.Draw(img)  
+                img1.ellipse([(row[' xcenter']-row[' rhorizontal'],
+                               row[' ycenter']-row[' rvertical']),
+                              (row[' xcenter']+row[' rhorizontal'],
+                               row[' ycenter']+row[' rvertical'])], fill ="white")
+                
+                sample = np.asarray(img)[:,:,1]
+                samples_list.append(sample.astype(bool))
+
+            if len(subsample) == 0:
+                samples_array = np.array([np.zeros(shape,dtype=bool)])
+            else:
+                samples_array = np.stack([sum(samples_list).astype(bool)]+ samples_list)
+
+            data[user].append(samples_array)
+        cases_order.append(case)
+    
+    os.mkdir(output_path)
+    os.mkdir(output_path+'/after')
+    os.mkdir(output_path+'/sample_1')
+    os.mkdir(output_path+'/sample_2')
+    os.mkdir(output_path+'/sample_3')
+    
+    for i in range(100):
+        np.save(output_path+f'/after/{cases_order[i]}.npy',data['Expert'][i])
+        np.save(output_path+f'/sample_1/{cases_order[i]}.npy',data['sample_1'][i])
+        np.save(output_path+f'/sample_2/{cases_order[i]}.npy',data['sample_2'][i])
+        np.save(output_path+f'/sample_3/{cases_order[i]}.npy',data['sample_3'][i])
