@@ -91,15 +91,17 @@ class BaseQualityEstimator(BaseEstimator, ClassifierMixin):
     
     def fit(self, X, Xy=None, y=None):
         """
-        
+        Fitting of the algorithm:
+         - 1-st stage metrics: generation in the search space
+         - 2-nd stage metrics: aggregation for each generated metric in the search space
+         - feature selection from the aggregated metrics
+         - fitting of the 1-st level meta-estimators on the selected features
+         - aggregation function optimization over predictions of the 1-st level meta-estimators
         """
         assert len(X) == len(Xy) == len(y)
-        # get the dimensionality of the data
-#         self.data_type = self._check_data_type(X)
-        # compute all the metrics on the pairs from X (predictions) and Xy (gt)
+        # compute all the metrics on the pairs from X (predictions) and Xy (gt):
         self.X_metrics = self._compute_metrics(X, Xy)
-        # fit meta-classifiers to metrics and human-made labels
-        
+        # select best features according to the RFECV algorithm:
         def _select_features(estimator):
             cv = 10
             cv = GroupKFold(n_splits=cv)
@@ -118,8 +120,6 @@ class BaseQualityEstimator(BaseEstimator, ClassifierMixin):
         for meta_clf_name, meta_clf in self.meta_clfs.items():
             best_columns_dict[meta_clf_name] = _select_features(meta_clf)
             
-#         for meta_clf_name in self.meta_clfs:
-#             best_columns_dict[meta_clf_name] = pd.read_csv("../data/" + meta_clf_name + "_features.csv")['good_' + meta_clf_name + '_features'].values
             
         self.selected_features = best_columns_dict
             
@@ -129,6 +129,9 @@ class BaseQualityEstimator(BaseEstimator, ClassifierMixin):
         return self
     
     def predict(self, X, Xy):
+        """
+        Prediction function, extract features and do predictions using meta-algorithms.   
+        """
         
         X_metrics = self._compute_metrics(X, Xy)
         self.X_metrics_last_test = X_metrics
@@ -141,7 +144,9 @@ class BaseQualityEstimator(BaseEstimator, ClassifierMixin):
         return np.mean(y_preds, axis=0)
     
     def predict_proba(self, X, Xy):
-        
+        """
+        Prediction function, extract features and do predictions of probas using meta-algorithms.   
+        """
         X_metrics = self._compute_metrics(X, Xy)
         
         y_preds = []
@@ -178,21 +183,17 @@ class BaseQualityEstimator(BaseEstimator, ClassifierMixin):
                             'function'](matching_)
                     else:
                         params = matching_metrics_dict[metric_]['params']
-                        #                     print(params)
-                        #                     params = {"l": [1, 2, 3], "g": [4, 5, 6]}
                         params_sets = [dict(zip(params.keys(), v_)) for v_ in list(product(*params.values()))]
-                        #                     params_sets = [dict(zip(params, t)) for t in zip(*params.values())]
-                        #                     print(params_sets)
+
                         for param_set_ in params_sets:
                             temp_metric_name_ = metric_ + "_"
                             for key_ in param_set_:
                                 temp_metric_name_ += str(param_set_[key_]) + "_" if isinstance(param_set_[key_],
                                                                                                float) or isinstance(
                                     param_set_[key_], int) else param_set_[key_].__name__
-                            #                         print(temp_metric_name_)
+
                             matching_metrics_computed[temp_metric_name_ + f'_iou_{th}'] = \
                             matching_metrics_dict[metric_]['function'](matching_, **param_set_)
-            #             print(len(matching_metrics_computed))
             return matching_metrics_computed
 
         metrics_computed = []
@@ -208,17 +209,6 @@ class BaseQualityEstimator(BaseEstimator, ClassifierMixin):
         
         return df_metrics_computed
         
-    def _check_data_type(self, X):
-        """
-        TODO:
-        """
-        # заглушка:
-        if len(X.shape) == 2:
-            return "2d"
-        elif X.shape[2] == 1:
-            return "2d"
-        else:
-            return "3d"
 
     def score(self, X, y=None):
         # counts number of values bigger than mean
