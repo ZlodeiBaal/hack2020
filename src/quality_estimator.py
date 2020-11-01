@@ -4,7 +4,6 @@ import glob
 import pathlib
 import numpy as np
 import pandas as pd
-# import pylab as plt
 
 from itertools import product
 
@@ -12,6 +11,8 @@ from lightgbm import LGBMClassifier
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.base import BaseEstimator, ClassifierMixin
 
+from sklearn.feature_selection import RFECV
+from sklearn.model_selection import GroupKFold
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error as MAE
 
@@ -24,8 +25,6 @@ from matching_metrics import *
 
 metrics_dict = {
     "dice_coefficient": {"2d": dice_score, "3d": dice_score},
-#     "mae": {"2d": lambda x, y: np.abs(x - y).mean(), "3d": lambda x, y: np.abs(x - y).mean()},
-#     "mse": {"2d": lambda x, y: ((x - y) ** 2).mean(), "3d": lambda x, y: ((x - y) ** 2).mean()},
     "hausdorff_distance": {"2d": hausdorff_distance, "3d": hausdorff_distance},
     "surface_distances": {"2d": surface_distances, "3d": surface_distances},
     "assd": {"2d": assd, "3d": assd}
@@ -68,21 +67,26 @@ matching_metrics_dict = {
 class BaseQualityEstimator(BaseEstimator, ClassifierMixin):
     """Base Estimator for segmentation quality assessment"""
 
-    def __init__(self, metrics=["dice_coefficient"], unary_metrics=["area"], matching_metrics=[], meta_clf=LGBMClassifier()):
+    def __init__(self, metrics=["dice_coefficient"], unary_metrics=["area"], matching_metrics=[], 
+                 meta_clfs={'lgbm': LGBMClassifier(max_depth=2)}):
         """
         Args:
             metrics: list of strings: metrics to be computed on pairs of preds and gt
             unary_metrics: list of string: metrics to be computed on preds directly
+            matching_metrics: list of matching metrics which can have parameter search grid
+            meta_clfs: dict of classifiers with fit / predict methods to be fitted on the top of extracted features
         
-        TODO: params??
         """
-        self.meta_clf = meta_clf
+        self.meta_clfs = meta_clfs
         self.metrics = list(filter(lambda _: _ in metrics_dict, metrics))
         self.unary_metrics = list(filter(lambda _: _ in unary_metrics_dict, unary_metrics))
         self.matching_metrics = list(filter(lambda _: _ in matching_metrics_dict, matching_metrics))
         
         self.data_type = "3d"
         self.X_metrics = None
+        self.X_metrics_last_test = None
+        
+        self.selected_features = dict()
     
     
     def fit(self, X, Xy=None, y=None):
@@ -94,26 +98,58 @@ class BaseQualityEstimator(BaseEstimator, ClassifierMixin):
 #         self.data_type = self._check_data_type(X)
         # compute all the metrics on the pairs from X (predictions) and Xy (gt)
         self.X_metrics = self._compute_metrics(X, Xy)
-        # fit meta-classifier to metrics and human-made labels
-        self.meta_clf.fit(self.X_metrics, y)
+        # fit meta-classifiers to metrics and human-made labels
+        
+        def _select_features(estimator):
+            cv = 10
+            cv = GroupKFold(n_splits=cv)
+
+            groups = list(range(len(y) // 3)) * 3
+            g = list(cv.split(self.X_metrics, y, groups=groups))
+
+            rfecv = RFECV(estimator=estimator, step=15, cv=g, 
+                          scoring='neg_mean_absolute_error', verbose=0).fit(self.X_metrics, y)
+            best_columns = self.X_metrics.columns[rfecv.support_].values
+            
+            return best_columns
+        
+        best_columns_dict = dict()
+        
+        for meta_clf_name, meta_clf in self.meta_clfs.items():
+            best_columns_dict[meta_clf_name] = _select_features(meta_clf)
+            
+#         for meta_clf_name in self.meta_clfs:
+#             best_columns_dict[meta_clf_name] = pd.read_csv("../data/" + meta_clf_name + "_features.csv")['good_' + meta_clf_name + '_features'].values
+            
+        self.selected_features = best_columns_dict
+            
+        for meta_clf_name, meta_clf in self.meta_clfs.items():
+            meta_clf.fit(self.X_metrics[best_columns_dict[meta_clf_name]].fillna(0), y)
 
         return self
     
     def predict(self, X, Xy):
         
         X_metrics = self._compute_metrics(X, Xy)
+        self.X_metrics_last_test = X_metrics
+            
+        y_preds = []
         
-        y_pred = self.meta_clf.predict(X_metrics)
-        
-        return y_pred
+        for meta_clf_name, meta_clf in self.meta_clfs.items():
+            y_preds.append(meta_clf.predict(X_metrics[self.selected_features[meta_clf_name]].fillna(0)))
+        # aggregate meta-clf predictions:
+        return np.mean(y_preds, axis=0)
     
     def predict_proba(self, X, Xy):
         
         X_metrics = self._compute_metrics(X, Xy)
         
-        y_pred = self.meta_clf.predict_proba(X_metrics)
+        y_preds = []
         
-        return y_pred
+        for meta_clf_name, meta_clf in self.meta_clfs.items():
+            y_preds.append(meta_clf.predict_proba(X_metrics[self.selected_features[meta_clf_name]].fillna(0)))
+        # aggregate meta-clf predictions:s
+        return np.mean(y_preds, axis=0)
     
     def _compute_metrics(self, X, Xy):
         
@@ -131,7 +167,7 @@ class BaseQualityEstimator(BaseEstimator, ClassifierMixin):
             return unary_metrics_computed
 
         def _matching_metrics(x_decomp, xy_decomp):
-            metric_ths = [0.02, 0.25, 0.7]
+            metric_ths = [0.02, 0.25, 0.5, 0.7]
             matching = get_matching(x_decomp, xy_decomp, metric=iou, metric_ths=metric_ths)
 
             matching_metrics_computed = dict()
